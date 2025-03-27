@@ -2,7 +2,6 @@ import os
 import openai
 import openpyxl
 from datetime import datetime
-import locale
 from twilio.rest import Client
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
@@ -10,9 +9,6 @@ from twilio.twiml.messaging_response import MessagingResponse
 
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
-
-# Definir a localidade para português do Brasil
-locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
 
 # Obter as chaves de API da variável de ambiente
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -26,7 +22,7 @@ openai.api_key = OPENAI_API_KEY
 # Inicializar o cliente Twilio
 client_twilio = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-# Função para obter a data e hora no formato desejado
+# Função para obter a data e hora no formato desejado (sem usar locale)
 def obter_data_hora():
     data_atual = datetime.now()
     data_formatada = data_atual.strftime("%d de %B de %Y")  # Ex: 24 de março de 2025
@@ -37,14 +33,13 @@ def obter_data_hora():
 def enviar_mensagem(mensagem):
     prompt_personalizado = f"Você está conversando com um agricultor no sistema do Campo Inteligente. Responda de forma clara e objetiva sobre cadastro, funcionalidades do sistema, ou uso agrícola. Pergunta: {mensagem}"
     try:
-        # Corrigido para utilizar a sintaxe correta com chat.completions
         resposta = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt_personalizado}],
             max_tokens=150,
             temperature=0.5
         )
-        return resposta.choices[0].message['content'].strip()  # Corrigido para acessar a resposta corretamente
+        return resposta.choices[0].message['content'].strip()
     except Exception as e:
         return f"Erro na API do OpenAI: {e}"
 
@@ -52,7 +47,7 @@ def enviar_mensagem(mensagem):
 def enviar_mensagem_whatsapp(mensagem, numero):
     mensagem_enviada = client_twilio.messages.create(
         body=mensagem,
-        from_=f'whatsapp:{TWILIO_WHATSAPP_NUMBER}',  # Número da Twilio para WhatsApp
+        from_=f'whatsapp:{TWILIO_WHATSAPP_NUMBER}',
         to=f'whatsapp:{numero}'
     )
     return mensagem_enviada.sid
