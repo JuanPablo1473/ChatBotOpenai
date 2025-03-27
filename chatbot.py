@@ -10,8 +10,16 @@ from twilio.twiml.messaging_response import MessagingResponse
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
 
-# Definir a localidade para português do Brasil
-locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
+# Tentar definir a localidade para português do Brasil
+try:
+    locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
+except locale.Error:
+    # Se o "pt_BR.UTF-8" não for suportado, tenta uma alternativa
+    try:
+        locale.setlocale(locale.LC_TIME, "pt_BR")
+    except locale.Error:
+        # Caso falhe novamente, pode tentar o padrão do sistema
+        locale.setlocale(locale.LC_TIME, "")
 
 # Obter as chaves de API da variável de ambiente
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
