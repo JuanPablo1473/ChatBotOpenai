@@ -196,18 +196,26 @@ def webhook():
         try:
             entry = data['entry'][0]
             changes = entry['changes'][0]
-            messages = changes['value'].get('messages')
+            value = changes['value']
 
+            # Verifica se tem mensagem
+            messages = value.get('messages')
             if messages:
                 msg = messages[0]
                 numero = msg['from']
-                texto_recebido = msg['text']['body']
 
+                if 'text' in msg:
+                    texto_recebido = msg['text']['body']
+                else:
+                    texto_recebido = "Usuário enviou algo que não é texto."
+
+                # IA gera a resposta baseada no que o usuário mandou
                 resposta_ia = enviar_mensagem_ia(texto_recebido)
                 texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
 
+                # Enviar a resposta no WhatsApp
                 status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
-                print("✅ Mensagem enviada:", resposta_api)
+                print(f"✅ Mensagem enviada para {numero}: {texto_resposta}")
 
         except Exception as e:
             print("❌ Erro ao processar mensagem:", str(e))
