@@ -20,10 +20,13 @@ app = Flask(__name__)
 # Chaves de API
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
-EVOLUTION_INSTANCE_ID = "85bea790-97cf-4208-a33a-2105dec71b2e"
+WHATSAPP_ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+VERIFY_TOKEN = os.getenv("WHATSAPP_TOKEN")
 
 client_openai = openai.Client(api_key=OPENAI_API_KEY)
+
+WHATSAPP_API_URL = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_NUMBER_ID}/messages"
 
 # Funções auxiliares
 def obter_data_hora():
@@ -93,16 +96,6 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def enviar_mensagem_evolution(numero, mensagem):
-    try:
-        url = f"http://localhost:8081/manager/instance/{EVOLUTION_INSTANCE_ID}/sqs"
-        payload = {"number": numero, "message": mensagem}
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers)
-        return {"status": response.status_code, "mensagem": response.text}
-    except Exception as e:
-        return {"erro": str(e)}
-
 def enviar_mensagem_ia(mensagem):
     try:
         local = obter_localizacao_via_ip()
@@ -124,6 +117,22 @@ def enviar_mensagem_ia(mensagem):
     except Exception as e:
         return {"erro": str(e)}
 
+def enviar_mensagem_whatsapp(numero_destino, mensagem):
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": numero_destino,
+        "type": "text",
+        "text": {
+            "body": mensagem
+        }
+    }
+    response = requests.post(WHATSAPP_API_URL, headers=headers, json=payload)
+    return response.status_code, response.json()
+
 def salvar_planilha(dados):
     try:
         arquivo = "respostas_agricultores_" + datetime.now().strftime("%Y%m%d%H%M%S") + ".xlsx"
@@ -139,7 +148,7 @@ def salvar_planilha(dados):
         return {"erro": str(e)}
 
 # Endpoints
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
     return {"mensagem": "🚜 API Campo Inteligente Rodando!"}
 
@@ -165,58 +174,45 @@ def perguntar():
     mensagem = data.get("mensagem")
     return jsonify(enviar_mensagem_ia(mensagem))
 
-@app.route("/enviar_evolution", methods=["POST"])
-def enviar_evolution():
-    data = request.json
-    numero = data.get("numero")
-    mensagem = data.get("mensagem")
-    return jsonify(enviar_mensagem_evolution(numero, mensagem))
-
 @app.route("/salvar_agricultores", methods=["POST"])
 def salvar_agricultores():
     dados = request.json.get("dados", [])
     return jsonify(salvar_planilha(dados))
 
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["GET", "POST"])
 def webhook():
-    try:
+    if request.method == "GET":
+        mode = request.args.get("hub.mode")
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            return challenge, 200
+        return "Erro de verificação", 403
+
+    if request.method == "POST":
         data = request.json
         print("🔔 Webhook recebido:", data)
 
-        if data.get("event") == "messages.upsert":
-            mensagem_info = data.get("data", {})
-            mensagem = mensagem_info.get("message", {})
+        try:
+            entry = data['entry'][0]
+            changes = entry['changes'][0]
+            messages = changes['value'].get('messages')
 
-            if "conversation" in mensagem:
-                mensagem_texto = mensagem.get("conversation")
-            elif "extendedTextMessage" in mensagem:
-                mensagem_texto = mensagem["extendedTextMessage"].get("text")
-            else:
-                mensagem_texto = ""
+            if messages:
+                msg = messages[0]
+                numero = msg['from']
+                texto_recebido = msg['text']['body']
 
-            numero_completo = mensagem_info.get("key", {}).get("remoteJid", "")
-            if not numero_completo.endswith("@s.whatsapp.net"):
-                print("⚠️ Ignorando mensagem de grupo ou formato inválido:", numero_completo)
-                return jsonify({"status": "ignorado"})
+                resposta_ia = enviar_mensagem_ia(texto_recebido)
+                texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
 
-            numero_formatado = numero_completo.split('@')[0]
+                status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
+                print("✅ Mensagem enviada:", resposta_api)
 
-            if mensagem_texto and numero_formatado:
-                print(f"📩 Mensagem recebida de {numero_formatado}: {mensagem_texto}")
+        except Exception as e:
+            print("❌ Erro ao processar mensagem:", str(e))
 
-                resposta_ia = enviar_mensagem_ia(mensagem_texto)
-                print("🔎 Resposta da IA:", resposta_ia)
+        return jsonify({"status": "recebido"}), 200
 
-                resposta_final = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
-                envio = enviar_mensagem_evolution(numero_formatado, resposta_final)
-                print("📤 Resultado do envio Evolution:", envio)
-
-        return jsonify({"status": "mensagem processada com sucesso"})
-
-    except Exception as e:
-        print("❌ Erro ao processar webhook:", str(e))
-        return jsonify({"erro": str(e)}), 500
-
-# Início da aplicação
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
