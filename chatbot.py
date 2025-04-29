@@ -59,28 +59,6 @@ def obter_previsao_tempo(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def obter_previsao_estendida(cidade, pais):
-    if not cidade or not pais:
-        return {"erro": "Cidade e país são obrigatórios."}
-    url = f"http://api.openweathermap.org/data/2.5/forecast?q={cidade},{pais}&cnt=3&appid={OPENWEATHER_API_KEY}&units=metric&lang=pt"
-    try:
-        r = requests.get(url)
-        d = r.json()
-        if r.status_code != 200:
-            return {"erro": f"Não encontrei previsão para '{cidade}, {pais}'."}
-        previsoes = []
-        for dia in d["list"]:
-            data = datetime.utcfromtimestamp(dia["dt"]).strftime("%d/%m/%Y")
-            previsoes.append({
-                "data": data,
-                "descricao": dia["weather"][0]["description"],
-                "min": dia["main"]["temp_min"],
-                "max": dia["main"]["temp_max"]
-            })
-        return {"previsao": previsoes}
-    except Exception as e:
-        return {"erro": str(e)}
-
 def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
     try:
         data_atual, dia_semana = obter_data_hora()
@@ -139,19 +117,28 @@ def previsao():
     pais = request.args.get("pais")
     return jsonify(obter_previsao_tempo(cidade, pais))
 
-@app.route("/previsao_estendida", methods=["GET"])
-def previsao_estendida():
-    cidade = request.args.get("cidade")
-    pais = request.args.get("pais")
-    return jsonify(obter_previsao_estendida(cidade, pais))
-
 @app.route("/perguntar", methods=["POST"])
 def perguntar():
     data = request.json
     mensagem = data.get("mensagem")
     cidade = data.get("cidade")
     pais = data.get("pais")
-    return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
+
+    if "clima" in mensagem.lower():
+        if cidade and pais:
+            clima = obter_previsao_tempo(cidade, pais)
+            if clima.get("erro"):
+                return jsonify({"erro": clima["erro"]}), 400
+            resposta = f"🌦️ Previsão do tempo em {cidade}:\n" \
+                       f"Temperatura: {clima['temperatura']}°C\n" \
+                       f"Sensação térmica: {clima['sensacao']}°C\n" \
+                       f"Umidade: {clima['umidade']}%\n" \
+                       f"Vento: {clima['vento']} m/s"
+            return jsonify({"resposta": resposta}), 200
+
+    # Caso não seja um pedido de clima, chama a IA para responder
+    resposta_ia = enviar_mensagem_ia(mensagem, cidade, pais)
+    return jsonify(resposta_ia)
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -178,30 +165,18 @@ def webhook():
                 numero = msg['from']
                 texto_recebido = msg.get('text', {}).get('body', "Usuário enviou algo que não é texto.")
 
+                # Verifica se a mensagem contém localização
                 location = msg.get("location")
                 cidade = pais = None
+
                 if location:
-                    cidade = location.get("name")
-                    pais = "BR"  # ou detecte com reverse geocoding
-
-                # Obter previsão do tempo imediatamente após receber a localização
-                clima = obter_previsao_tempo(cidade, pais)
-
-                # Aqui você já pode enviar a previsão junto com a resposta da IA
-                resposta_ia = enviar_mensagem_ia(texto_recebido, cidade, pais)
-                texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
-
-                # Adiciona a previsão do tempo na resposta
-                if clima.get("erro"):
-                    texto_resposta += f"\n🌦️ Não foi possível obter a previsão do tempo para {cidade}, {pais}."
+                    cidade = location.get("name")  # Pega o nome da cidade da localização
+                    pais = location.get("country")  # Pega o nome do país da localização
+                    texto_resposta = f"🔍 Localização detectada: {cidade}, {pais}. Como posso ajudá-lo?"
                 else:
-                    texto_resposta += f"\n🌦️ Previsão do tempo em {cidade}:\n" \
-                                      f"Temperatura: {clima['temperatura']}°C\n" \
-                                      f"Sensação térmica: {clima['sensacao']}°C\n" \
-                                      f"Umidade: {clima['umidade']}%\n" \
-                                      f"Vento: {clima['vento']} m/s"
+                    texto_resposta = "Olá! Para que eu possa te ajudar, por favor, me envie sua localização (cidade e país)."
 
-                # Enviar mensagem de volta para o WhatsApp
+                # Envia a resposta pedindo a localização
                 status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
                 print(f"✅ Mensagem enviada para {numero}: {texto_resposta}")
 
