@@ -96,38 +96,30 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
+def enviar_mensagem_ia(mensagem):
     try:
-        # Verificar se a pergunta está relacionada ao clima ou localização
-        palavras_chave_clima = ['clima', 'tempo', 'previsão', 'localização', 'temperatura']
+        # Atualiza a data e a localização em tempo real
+        data_atual, dia_semana = obter_data_hora()
+        local = obter_localizacao_via_ip()
+        clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
         
-        # Se a pergunta tiver alguma das palavras chave relacionadas a clima ou localização
-        if any(palavra in mensagem.lower() for palavra in palavras_chave_clima):
-            if not cidade or not pais:
-                return {"erro": "Por favor, forneça a cidade e o país para consulta de clima."}
-
-            # Chama a API de previsão de tempo usando cidade e país fornecidos
-            clima = obter_previsao_tempo(cidade, pais)  
-            prompt = (
-                "Você é um assistente agrícola no sistema Campo Inteligente.\n"
-                f"🌍 Local: {cidade}, {pais}\n"
-                f"🌦️ Clima: {clima}\n"
-                f"❓ Pergunta: {mensagem}"
-            )
-        else:
-            # Caso não seja uma pergunta sobre clima, apenas responde normalmente
-            prompt = (
-                "Você é um assistente agrícola no sistema Campo Inteligente.\n"
-                f"❓ Pergunta: {mensagem}"
-            )
+        # Criando o prompt com dados atualizados
+        prompt = (
+            "Você é um assistente agrícola no sistema Campo Inteligente.\n"
+            f"📍 Local: {local}\n"
+            f"🌦️ Clima: {clima}\n"
+            f"🗓️ Data: {data_atual} ({dia_semana})\n"
+            f"❓ Pergunta: {mensagem}"
+        )
         
-        # Resposta da IA
+        # Envia o prompt para o modelo de IA
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
         )
+        
         conteudo = resposta.choices[0].message.content.strip() if resposta.choices else "Não consegui gerar uma resposta."
         return {"resposta": conteudo}
     except Exception as e:
@@ -188,11 +180,7 @@ def previsao_estendida():
 def perguntar():
     data = request.json
     mensagem = data.get("mensagem")
-    cidade = data.get("cidade")  # cidade opcional
-    pais = data.get("pais")      # país opcional
-    
-    # Chama a função de enviar mensagem para IA
-    return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
+    return jsonify(enviar_mensagem_ia(mensagem))
 
 @app.route("/salvar_agricultores", methods=["POST"])
 def salvar_agricultores():
