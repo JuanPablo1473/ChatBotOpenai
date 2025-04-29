@@ -96,16 +96,27 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def enviar_mensagem_ia(mensagem):
+def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
     try:
-        local = obter_localizacao_via_ip()
-        clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
+        data_atual, dia_semana = obter_data_hora()
+
+        if not cidade or not pais:
+            local = obter_localizacao_via_ip()
+            cidade = local.get("cidade", "Salvador")
+            pais = local.get("pais", "BR")
+        else:
+            local = {"cidade": cidade, "pais": pais}
+
+        clima = obter_previsao_tempo(cidade, pais)
+
         prompt = (
             "Você é um assistente agrícola no sistema Campo Inteligente.\n"
             f"📍 Local: {local}\n"
+            f"📅 Hoje é {dia_semana}, {data_atual}.\n"
             f"🌦️ Clima: {clima}\n"
             f"❓ Pergunta: {mensagem}"
         )
+
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -172,7 +183,9 @@ def previsao_estendida():
 def perguntar():
     data = request.json
     mensagem = data.get("mensagem")
-    return jsonify(enviar_mensagem_ia(mensagem))
+    cidade = data.get("cidade")
+    pais = data.get("pais")
+    return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
 
 @app.route("/salvar_agricultores", methods=["POST"])
 def salvar_agricultores():
@@ -198,22 +211,21 @@ def webhook():
             changes = entry['changes'][0]
             value = changes['value']
 
-            # Verifica se tem mensagem
             messages = value.get('messages')
             if messages:
                 msg = messages[0]
                 numero = msg['from']
+                texto_recebido = msg.get('text', {}).get('body', "Usuário enviou algo que não é texto.")
 
-                if 'text' in msg:
-                    texto_recebido = msg['text']['body']
-                else:
-                    texto_recebido = "Usuário enviou algo que não é texto."
+                location = msg.get("location")
+                cidade = pais = None
+                if location:
+                    cidade = location.get("name")
+                    pais = "BR"  # ou detecte com reverse geocoding
 
-                # IA gera a resposta baseada no que o usuário mandou
-                resposta_ia = enviar_mensagem_ia(texto_recebido)
+                resposta_ia = enviar_mensagem_ia(texto_recebido, cidade, pais)
                 texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
 
-                # Enviar a resposta no WhatsApp
                 status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
                 print(f"✅ Mensagem enviada para {numero}: {texto_resposta}")
 
