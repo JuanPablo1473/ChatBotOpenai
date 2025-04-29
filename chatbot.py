@@ -39,21 +39,6 @@ def obter_data_hora():
     dia_semana = dias_semana.get(agora.strftime("%A"), agora.strftime("%A"))
     return data, dia_semana
 
-def obter_localizacao_via_ip():
-    try:
-        r = requests.get("http://ip-api.com/json/")
-        d = r.json()
-        if d['status'] == 'success':
-            return {
-                "pais": d['country'],
-                "estado": d['regionName'],
-                "cidade": d['city'],
-                "ip": d['query']
-            }
-        return {"erro": "Não foi possível determinar sua localização."}
-    except Exception as e:
-        return {"erro": str(e)}
-
 def obter_previsao_tempo(cidade, pais):
     if not cidade or not pais:
         return {"erro": "Cidade e país são obrigatórios."}
@@ -100,10 +85,9 @@ def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
     try:
         data_atual, dia_semana = obter_data_hora()
 
+        # Usa a localização enviada pelo usuário, se disponível
         if not cidade or not pais:
-            local = obter_localizacao_via_ip()
-            cidade = local.get("cidade", "Salvador")
-            pais = local.get("pais", "BR")
+            local = {"cidade": cidade, "pais": pais}
         else:
             local = {"cidade": cidade, "pais": pais}
 
@@ -114,7 +98,7 @@ def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
             f"📍 Local: {local}\n"
             f"📅 Hoje é {dia_semana}, {data_atual}.\n"
             f"🌦️ Clima: {clima}\n"
-            f"❓ Pergunta: {mensagem}"
+            f"❓ Pergunta: {mensagem}."
         )
 
         resposta = client_openai.chat.completions.create(
@@ -144,28 +128,10 @@ def enviar_mensagem_whatsapp(numero_destino, mensagem):
     response = requests.post(WHATSAPP_API_URL, headers=headers, json=payload)
     return response.status_code, response.json()
 
-def salvar_planilha(dados):
-    try:
-        arquivo = "respostas_agricultores_" + datetime.now().strftime("%Y%m%d%H%M%S") + ".xlsx"
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Respostas"
-        ws.append(["Nome", "Localização", "Data", "Dia da Semana"])
-        for linha in dados:
-            ws.append(linha)
-        wb.save(arquivo)
-        return {"arquivo_criado": arquivo}
-    except Exception as e:
-        return {"erro": str(e)}
-
 # Endpoints
 @app.route("/", methods=["GET", "POST"])
 def home():
     return {"mensagem": "🚜 API Campo Inteligente Rodando!"}
-
-@app.route("/localizacao", methods=["GET"])
-def localizacao():
-    return jsonify({"mensagem": "Por favor, envie sua localização diretamente pelo WhatsApp."})
 
 @app.route("/previsao", methods=["GET"])
 def previsao():
@@ -186,11 +152,6 @@ def perguntar():
     cidade = data.get("cidade")
     pais = data.get("pais")
     return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
-
-@app.route("/salvar_agricultores", methods=["POST"])
-def salvar_agricultores():
-    dados = request.json.get("dados", [])
-    return jsonify(salvar_planilha(dados))
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
