@@ -85,18 +85,19 @@ def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
     try:
         data_atual, dia_semana = obter_data_hora()
 
-        # Garante que a cidade e país sejam informados antes de prosseguir
-        if cidade and pais:
-            clima = obter_previsao_tempo(cidade, pais)
-            clima_info = f"🌦️ Clima atual: {clima['descricao']}, {clima['temperatura']}°C (sensação térmica {clima['sensacao']}°C), Umidade: {clima['umidade']}%, Vento: {clima['vento']} m/s."
+        # Usa a localização enviada pelo usuário, se disponível
+        if not cidade or not pais:
+            local = {"cidade": cidade, "pais": pais}
         else:
-            clima_info = "🌦️ Não foi possível obter a previsão do tempo."
+            local = {"cidade": cidade, "pais": pais}
+
+        clima = obter_previsao_tempo(cidade, pais)
 
         prompt = (
             "Você é um assistente agrícola no sistema Campo Inteligente.\n"
-            f"📍 Local: {cidade}, {pais}\n"
+            f"📍 Local: {local}\n"
             f"📅 Hoje é {dia_semana}, {data_atual}.\n"
-            f"{clima_info}\n"
+            f"🌦️ Clima: {clima}\n"
             f"❓ Pergunta: {mensagem}."
         )
 
@@ -181,7 +182,7 @@ def webhook():
                 cidade = pais = None
                 if location:
                     cidade = location.get("name")
-                    pais = "BR"  # Ou usar Reverse Geocoding para uma detecção mais precisa da localização
+                    pais = "BR"  # ou detecte com reverse geocoding
 
                 resposta_ia = enviar_mensagem_ia(texto_recebido, cidade, pais)
                 texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
