@@ -39,6 +39,21 @@ def obter_data_hora():
     dia_semana = dias_semana.get(agora.strftime("%A"), agora.strftime("%A"))
     return data, dia_semana
 
+def obter_localizacao_via_ip():
+    try:
+        r = requests.get("http://ip-api.com/json/")
+        d = r.json()
+        if d['status'] == 'success':
+            return {
+                "pais": d['country'],
+                "estado": d['regionName'],
+                "cidade": d['city'],
+                "ip": d['query']
+            }
+        return {"erro": "Não foi possível determinar sua localização."}
+    except Exception as e:
+        return {"erro": str(e)}
+
 def obter_previsao_tempo(cidade, pais):
     if not cidade or not pais:
         return {"erro": "Cidade e país são obrigatórios."}
@@ -81,38 +96,16 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def recomendacao_de_plantio(temperatura):
-    if temperatura >= 25:
-        return "Recomendamos o plantio de culturas que toleram calor, como milho, feijão e soja."
-    elif 15 <= temperatura < 25:
-        return "Recomendamos o plantio de culturas como arroz, batata-doce e tomate."
-    else:
-        return "Recomendamos o plantio de culturas que preferem climas mais frios, como alface e couve."
-
-def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
+def enviar_mensagem_ia(mensagem):
     try:
-        data_atual, dia_semana = obter_data_hora()
-
-        # Usa a localização enviada pelo usuário, se disponível
-        if not cidade or not pais:
-            return {"erro": "Para obter a previsão do tempo, preciso saber sua localização. Por favor, me informe a cidade e o país."}
-
-        clima = obter_previsao_tempo(cidade, pais)
-
-        if "erro" in clima:
-            return clima  # Caso haja erro na previsão, retorna o erro
-
-        recomendacao = recomendacao_de_plantio(clima['temperatura'])
-
+        local = obter_localizacao_via_ip()
+        clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
         prompt = (
             "Você é um assistente agrícola no sistema Campo Inteligente.\n"
-            f"📍 Local: {cidade}, {pais}\n"
-            f"📅 Hoje é {dia_semana}, {data_atual}.\n"
-            f"🌦️ Clima: {clima['descricao']}, {clima['temperatura']}°C (sensação de {clima['sensacao']}°C), umidade {clima['umidade']}% e vento de {clima['vento']} km/h.\n"
-            f"💡 Recomendações de plantio: {recomendacao}\n"
-            f"❓ Pergunta: {mensagem}."
+            f"📍 Local: {local}\n"
+            f"🌦️ Clima: {clima}\n"
+            f"❓ Pergunta: {mensagem}"
         )
-
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -140,10 +133,28 @@ def enviar_mensagem_whatsapp(numero_destino, mensagem):
     response = requests.post(WHATSAPP_API_URL, headers=headers, json=payload)
     return response.status_code, response.json()
 
+def salvar_planilha(dados):
+    try:
+        arquivo = "respostas_agricultores_" + datetime.now().strftime("%Y%m%d%H%M%S") + ".xlsx"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Respostas"
+        ws.append(["Nome", "Localização", "Data", "Dia da Semana"])
+        for linha in dados:
+            ws.append(linha)
+        wb.save(arquivo)
+        return {"arquivo_criado": arquivo}
+    except Exception as e:
+        return {"erro": str(e)}
+
 # Endpoints
 @app.route("/", methods=["GET", "POST"])
 def home():
     return {"mensagem": "🚜 API Campo Inteligente Rodando!"}
+
+@app.route("/localizacao", methods=["GET"])
+def localizacao():
+    return jsonify(obter_localizacao_via_ip())
 
 @app.route("/previsao", methods=["GET"])
 def previsao():
@@ -161,9 +172,12 @@ def previsao_estendida():
 def perguntar():
     data = request.json
     mensagem = data.get("mensagem")
-    cidade = data.get("cidade")
-    pais = data.get("pais")
-    return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
+    return jsonify(enviar_mensagem_ia(mensagem))
+
+@app.route("/salvar_agricultores", methods=["POST"])
+def salvar_agricultores():
+    dados = request.json.get("dados", [])
+    return jsonify(salvar_planilha(dados))
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -184,21 +198,22 @@ def webhook():
             changes = entry['changes'][0]
             value = changes['value']
 
+            # Verifica se tem mensagem
             messages = value.get('messages')
             if messages:
                 msg = messages[0]
                 numero = msg['from']
-                texto_recebido = msg.get('text', {}).get('body', "Usuário enviou algo que não é texto.")
 
-                location = msg.get("location")
-                cidade = pais = None
-                if location:
-                    cidade = location.get("name")
-                    pais = "BR"  # ou detecte com reverse geocoding
+                if 'text' in msg:
+                    texto_recebido = msg['text']['body']
+                else:
+                    texto_recebido = "Usuário enviou algo que não é texto."
 
-                resposta_ia = enviar_mensagem_ia(texto_recebido, cidade, pais)
+                # IA gera a resposta baseada no que o usuário mandou
+                resposta_ia = enviar_mensagem_ia(texto_recebido)
                 texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
 
+                # Enviar a resposta no WhatsApp
                 status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
                 print(f"✅ Mensagem enviada para {numero}: {texto_resposta}")
 
