@@ -184,9 +184,24 @@ def webhook():
                     cidade = location.get("name")
                     pais = "BR"  # ou detecte com reverse geocoding
 
+                # Obter previsão do tempo imediatamente após receber a localização
+                clima = obter_previsao_tempo(cidade, pais)
+
+                # Aqui você já pode enviar a previsão junto com a resposta da IA
                 resposta_ia = enviar_mensagem_ia(texto_recebido, cidade, pais)
                 texto_resposta = resposta_ia.get("resposta", "Desculpe, não entendi sua pergunta.")
 
+                # Adiciona a previsão do tempo na resposta
+                if clima.get("erro"):
+                    texto_resposta += f"\n🌦️ Não foi possível obter a previsão do tempo para {cidade}, {pais}."
+                else:
+                    texto_resposta += f"\n🌦️ Previsão do tempo em {cidade}:\n" \
+                                      f"Temperatura: {clima['temperatura']}°C\n" \
+                                      f"Sensação térmica: {clima['sensacao']}°C\n" \
+                                      f"Umidade: {clima['umidade']}%\n" \
+                                      f"Vento: {clima['vento']} m/s"
+
+                # Enviar mensagem de volta para o WhatsApp
                 status, resposta_api = enviar_mensagem_whatsapp(numero, texto_resposta)
                 print(f"✅ Mensagem enviada para {numero}: {texto_resposta}")
 
