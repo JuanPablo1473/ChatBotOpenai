@@ -98,28 +98,20 @@ def obter_previsao_estendida(cidade, pais):
 
 def enviar_mensagem_ia(mensagem):
     try:
-        # Atualiza a data e a localização em tempo real
-        data_atual, dia_semana = obter_data_hora()
         local = obter_localizacao_via_ip()
         clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
-        
-        # Criando o prompt com dados atualizados
         prompt = (
             "Você é um assistente agrícola no sistema Campo Inteligente.\n"
             f"📍 Local: {local}\n"
             f"🌦️ Clima: {clima}\n"
-            f"🗓️ Data: {data_atual} ({dia_semana})\n"
             f"❓ Pergunta: {mensagem}"
         )
-        
-        # Envia o prompt para o modelo de IA
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
         )
-        
         conteudo = resposta.choices[0].message.content.strip() if resposta.choices else "Não consegui gerar uma resposta."
         return {"resposta": conteudo}
     except Exception as e:
