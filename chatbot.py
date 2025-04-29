@@ -39,21 +39,6 @@ def obter_data_hora():
     dia_semana = dias_semana.get(agora.strftime("%A"), agora.strftime("%A"))
     return data, dia_semana
 
-def obter_localizacao_via_ip():
-    try:
-        r = requests.get("http://ip-api.com/json/")
-        d = r.json()
-        if d['status'] == 'success':
-            return {
-                "pais": d['country'],
-                "estado": d['regionName'],
-                "cidade": d['city'],
-                "ip": d['query']
-            }
-        return {"erro": "Não foi possível determinar sua localização."}
-    except Exception as e:
-        return {"erro": str(e)}
-
 def obter_previsao_tempo(cidade, pais):
     if not cidade or not pais:
         return {"erro": "Cidade e país são obrigatórios."}
@@ -96,16 +81,26 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-def enviar_mensagem_ia(mensagem):
+def enviar_mensagem_ia(mensagem, cidade=None, pais=None):
     try:
-        local = obter_localizacao_via_ip()
-        clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
+        if cidade and pais:
+            clima = obter_previsao_tempo(cidade, pais)
+            cidade_confirmada = f"A cidade que você informou foi {cidade} ({pais})."
+            if 'erro' in clima:
+                clima_info = "Não consegui obter a previsão do tempo."
+            else:
+                clima_info = f"🌦️ Clima: {clima['descricao']}, Temperatura: {clima['temperatura']}°C, Sensação: {clima['sensacao']}°C."
+        else:
+            cidade_confirmada = "Você não informou a cidade nem o país."
+            clima_info = "Não foi possível buscar o clima sem a cidade e o país."
+
         prompt = (
-            "Você é um assistente agrícola no sistema Campo Inteligente.\n"
-            f"📍 Local: {local}\n"
-            f"🌦️ Clima: {clima}\n"
+            f"Você é um assistente agrícola no sistema Campo Inteligente.\n"
+            f"📍 {cidade_confirmada}\n"
+            f"🌦️ {clima_info}\n"
             f"❓ Pergunta: {mensagem}"
         )
+
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -154,7 +149,7 @@ def home():
 
 @app.route("/localizacao", methods=["GET"])
 def localizacao():
-    return jsonify(obter_localizacao_via_ip())
+    return jsonify({"mensagem": "Agora a cidade e país devem ser informados pelo usuário."})
 
 @app.route("/previsao", methods=["GET"])
 def previsao():
@@ -172,7 +167,9 @@ def previsao_estendida():
 def perguntar():
     data = request.json
     mensagem = data.get("mensagem")
-    return jsonify(enviar_mensagem_ia(mensagem))
+    cidade = data.get("cidade")
+    pais = data.get("pais")
+    return jsonify(enviar_mensagem_ia(mensagem, cidade, pais))
 
 @app.route("/salvar_agricultores", methods=["POST"])
 def salvar_agricultores():
