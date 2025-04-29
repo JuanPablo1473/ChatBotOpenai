@@ -165,7 +165,7 @@ def home():
 
 @app.route("/localizacao", methods=["GET"])
 def localizacao():
-    return jsonify(obter_localizacao_via_ip())
+    return jsonify({"mensagem": "Por favor, envie sua localização diretamente pelo WhatsApp."})
 
 @app.route("/previsao", methods=["GET"])
 def previsao():
