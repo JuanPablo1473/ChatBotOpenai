@@ -6,21 +6,23 @@ import locale
 import os
 from dotenv import load_dotenv
 
-# Configurações
+# Configurações iniciais
 load_dotenv()
 app = Flask(__name__)
 
+# Localização de tempo
 try:
     locale.setlocale(locale.LC_TIME, "pt_BR.UTF-8")
-except:
-    locale.setlocale(locale.LC_TIME, "")  # fallback
+except locale.Error:
+    locale.setlocale(locale.LC_TIME, "")
 
-# Chaves
+# Chaves de API
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 EVOLUTION_INSTANCE_ID = os.getenv("EVOLUTION_INSTANCE_ID")
 EVOLUTION_TOKEN = os.getenv("EVOLUTION_TOKEN")
 
+# Cliente OpenAI
 client_openai = openai.Client(api_key=OPENAI_API_KEY)
 
 # Funções auxiliares
@@ -36,14 +38,14 @@ def obter_data_hora():
 
 def obter_localizacao_via_ip():
     try:
-        r = requests.get("http://ip-api.com/json/")
-        d = r.json()
-        if d['status'] == 'success':
+        response = requests.get("http://ip-api.com/json/")
+        data = response.json()
+        if data.get('status') == 'success':
             return {
-                "pais": d['country'],
-                "estado": d['regionName'],
-                "cidade": d['city'],
-                "ip": d['query']
+                "pais": data['country'],
+                "estado": data['regionName'],
+                "cidade": data['city'],
+                "ip": data['query']
             }
         return {"erro": "Não foi possível determinar sua localização."}
     except Exception as e:
@@ -52,19 +54,24 @@ def obter_localizacao_via_ip():
 def obter_previsao_tempo(cidade, pais):
     if not cidade or not pais:
         return {"erro": "Cidade e país são obrigatórios."}
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={cidade},{pais}&appid={OPENWEATHER_API_KEY}&units=metric&lang=pt"
+    
+    url = (
+        f"http://api.openweathermap.org/data/2.5/weather"
+        f"?q={cidade},{pais}&appid={OPENWEATHER_API_KEY}&units=metric&lang=pt"
+    )
     try:
-        r = requests.get(url)
-        d = r.json()
-        if r.status_code != 200:
+        response = requests.get(url)
+        dados = response.json()
+        if response.status_code != 200:
             return {"erro": f"Não encontrei previsão para '{cidade}, {pais}'."}
+        
         return {
             "cidade": cidade,
-            "descricao": d['weather'][0]['description'],
-            "temperatura": d['main']['temp'],
-            "sensacao": d['main']['feels_like'],
-            "umidade": d['main']['humidity'],
-            "vento": d['wind']['speed']
+            "descricao": dados['weather'][0]['description'],
+            "temperatura": dados['main']['temp'],
+            "sensacao": dados['main']['feels_like'],
+            "umidade": dados['main']['humidity'],
+            "vento": dados['wind']['speed']
         }
     except Exception as e:
         return {"erro": str(e)}
@@ -73,20 +80,24 @@ def enviar_mensagem_ia(mensagem):
     try:
         local = obter_localizacao_via_ip()
         clima = obter_previsao_tempo(local.get("cidade", "Salvador"), local.get("pais", "BR"))
+        
         prompt = (
             "Você é um assistente agrícola no sistema Campo Inteligente.\n"
             f"📍 Local: {local}\n"
             f"🌦️ Clima: {clima}\n"
-            f"❓ Pergunta: {mensagem}."
+            f"❓ Pergunta: {mensagem}"
         )
+
         resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
         )
+
         conteudo = resposta.choices[0].message.content.strip() if resposta.choices else "Não consegui gerar uma resposta."
         return {"resposta": conteudo}
+
     except Exception as e:
         return {"erro": str(e)}
 
@@ -97,18 +108,17 @@ def enviar_resposta_whatsapp(numero, mensagem):
         "message": mensagem
     }
     try:
-        r = requests.post(url, json=payload)
-        return r.json()
+        response = requests.post(url, json=payload)
+        return response.json()
     except Exception as e:
         return {"erro": str(e)}
 
-# Rota de webhook para Evolution API
+# Rota de webhook para mensagens recebidas via Evolution API
 @app.route("/webhook", methods=["POST"])
 def webhook():
     dados = request.get_json()
 
-    # Validando se os dados esperados estão presentes
-    if "sender" not in dados or "message" not in dados or "body" not in dados["message"]:
+    if not dados or "sender" not in dados or "message" not in dados or "body" not in dados["message"]:
         return jsonify({"erro": "Dados inválidos no webhook."}), 400
 
     try:
@@ -121,10 +131,11 @@ def webhook():
     except Exception as e:
         return jsonify({"erro": f"Erro ao processar a solicitação: {str(e)}"}), 400
 
-# Rota base para teste simples
+# Rota de teste
 @app.route("/", methods=["GET"])
 def home():
     return "API Campo Inteligente está ativa.", 200
 
+# Execução da aplicação
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
