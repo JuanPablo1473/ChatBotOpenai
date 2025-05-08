@@ -184,6 +184,7 @@ def webhook():
         data = request.json
         print(f"Dados recebidos: {data}")
         
+        # Verificar o evento
         if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
             
@@ -209,6 +210,12 @@ def webhook():
             else:
                 print("Mensagem não encontrada.")
                 return jsonify({"erro": "Mensagem não encontrada."}), 400
+
+        # Adicionar tratamento para 'chats.update'
+        elif data.get('event') == 'chats.update':
+            print("Evento de chat atualizado recebido. Sem ação necessária.")
+            return jsonify({"status": "sucesso", "mensagem": "Evento de chat atualizado recebido. Sem ação necessária."}), 200
+        
         else:
             print("Evento não reconhecido.")
             return jsonify({"erro": "Evento não reconhecido."}), 400
@@ -216,6 +223,7 @@ def webhook():
     except Exception as e:
         print(f"Erro: {str(e)}")
         return jsonify({"erro": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
