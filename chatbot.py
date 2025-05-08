@@ -187,10 +187,11 @@ def webhook():
         # Verificar o evento
         if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
-            
+
             if mensagem_recebida:
                 print(f"Mensagem recebida: {mensagem_recebida}")
 
+                # Verificar o conteúdo da mensagem
                 if 'clima' in mensagem_recebida.lower():
                     local = obter_localizacao_via_ip()
                     clima = obter_previsao_tempo(local.get("cidade"), local.get("pais"))
@@ -203,9 +204,14 @@ def webhook():
                     resposta = "Olá! Como posso te ajudar hoje?"
                 else:
                     resposta = "Desculpe, não entendi sua mensagem. Pode ser sobre clima ou previsão?"
-                
+
                 print(f"Resposta enviada: {resposta}")
                 
+                # Enviar resposta para o WhatsApp usando a função enviar_mensagem
+                numero = data.get('data', {}).get('key', {}).get('remoteJid', '')  # Extrair número do destinatário
+                if numero:
+                    enviar_mensagem({'numero': numero, 'mensagem': resposta})
+
                 return jsonify({"status": "sucesso", "resposta": resposta}), 200
             else:
                 print("Mensagem não encontrada.")
@@ -223,6 +229,7 @@ def webhook():
     except Exception as e:
         print(f"Erro: {str(e)}")
         return jsonify({"erro": str(e)}), 500
+
 
 
 if __name__ == "__main__":
