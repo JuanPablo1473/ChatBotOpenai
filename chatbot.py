@@ -75,6 +75,23 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
+# Função auxiliar para enviar mensagem via Evolution API
+def send_whatsapp_message(numero, mensagem):
+    payload = {
+        "number": numero,
+        "text": mensagem
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "apikey": AUTH_KEY
+    }
+    url = f"{EVOLUTION_API_URL}/message/send-text"
+    try:
+        resposta = requests.post(url, json=payload, headers=headers)
+        return resposta.status_code, resposta.json()
+    except Exception as e:
+        return None, {"erro": str(e)}
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json
@@ -109,7 +126,7 @@ def chat():
         return jsonify({"erro": str(e)}), 500
 
 @app.route("/enviar-mensagem", methods=["POST"])
-def enviar_mensagem():
+def route_enviar_mensagem():
     try:
         data = request.json
         numero = data.get("numero")
@@ -118,24 +135,11 @@ def enviar_mensagem():
         if not numero or not mensagem:
             return jsonify({"erro": "Número e mensagem são obrigatórios."}), 400
 
-        payload = {
-            "number": numero,
-            "text": mensagem
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "apikey": AUTH_KEY
-        }
-
-        url = f"{EVOLUTION_API_URL}/message/send-text"
-
-        resposta = requests.post(url, json=payload, headers=headers)
-
-        if resposta.status_code == 200:
-            return jsonify({"status": "Mensagem enviada com sucesso!", "resposta": resposta.json()}), 200
+        status_code, resposta_json = send_whatsapp_message(numero, mensagem)
+        if status_code == 200:
+            return jsonify({"status": "Mensagem enviada com sucesso!", "resposta": resposta_json}), 200
         else:
-            return jsonify({"erro": "Erro ao enviar mensagem.", "detalhes": resposta.json()}), resposta.status_code
+            return jsonify({"erro": "Erro ao enviar mensagem.", "detalhes": resposta_json}), status_code
 
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
@@ -179,7 +183,7 @@ def home():
     return "API Campo Inteligente está online!"
 
 @app.route("/webhook", methods=["POST"])
-def webhook():
+def webhook_route():
     try:
         data = request.json
         print(f"Dados recebidos: {data}")
@@ -191,7 +195,6 @@ def webhook():
             if mensagem_recebida:
                 print(f"Mensagem recebida: {mensagem_recebida}")
 
-                # Verificar o conteúdo da mensagem
                 if 'clima' in mensagem_recebida.lower():
                     local = obter_localizacao_via_ip()
                     clima = obter_previsao_tempo(local.get("cidade"), local.get("pais"))
@@ -207,17 +210,18 @@ def webhook():
 
                 print(f"Resposta enviada: {resposta}")
                 
-                # Enviar resposta para o WhatsApp usando a função enviar_mensagem
-                numero = data.get('data', {}).get('key', {}).get('remoteJid', '')  # Extrair número do destinatário
+                # Extrair número de destinatário do payload (deve estar em data['data']['key']['remoteJid'])
+                numero = data.get('data', {}).get('key', {}).get('remoteJid', '')
                 if numero:
-                    enviar_mensagem({'numero': numero, 'mensagem': resposta})
-
+                    # Envia a mensagem para o WhatsApp
+                    send_status, send_resp = send_whatsapp_message(numero, resposta)
+                    print(f"Status do envio: {send_status}, resposta: {send_resp}")
+                
                 return jsonify({"status": "sucesso", "resposta": resposta}), 200
             else:
                 print("Mensagem não encontrada.")
                 return jsonify({"erro": "Mensagem não encontrada."}), 400
-
-        # Adicionar tratamento para 'chats.update'
+        
         elif data.get('event') == 'chats.update':
             print("Evento de chat atualizado recebido. Sem ação necessária.")
             return jsonify({"status": "sucesso", "mensagem": "Evento de chat atualizado recebido. Sem ação necessária."}), 200
@@ -229,8 +233,6 @@ def webhook():
     except Exception as e:
         print(f"Erro: {str(e)}")
         return jsonify({"erro": str(e)}), 500
-
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
