@@ -17,7 +17,8 @@ except:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 AUTH_KEY = os.getenv("AUTHENTICATION_API_KEY")
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "localhost:8081/manager/CampoIA")
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8081/manager/CampoIA")
+
 
 openai.api_key = OPENAI_API_KEY
 client_openai = openai
