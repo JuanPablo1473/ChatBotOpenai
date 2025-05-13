@@ -89,9 +89,12 @@ def send_whatsapp_message(numero, mensagem):
     url = f"{EVOLUTION_API_URL}/message/send-text"
     try:
         resposta = requests.post(url, json=payload, headers=headers)
+        print(f"Status do envio: {resposta.status_code}, Resposta: {resposta.text}")  # Log adicional
         return resposta.status_code, resposta.json()
     except Exception as e:
+        print(f"Erro ao enviar mensagem: {e}")
         return None, {"erro": str(e)}
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -190,10 +193,9 @@ def webhook_route():
         
         if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
+            print(f"Mensagem recebida: {mensagem_recebida}")
 
             if mensagem_recebida:
-                print(f"Mensagem recebida: {mensagem_recebida}")
-
                 if 'clima' in mensagem_recebida.lower():
                     local = obter_localizacao_via_ip()
                     clima = obter_previsao_tempo(local.get("cidade"), local.get("pais"))
@@ -207,10 +209,13 @@ def webhook_route():
                 else:
                     resposta = "Desculpe, não entendi sua mensagem. Pode ser sobre clima ou previsão?"
 
-                print(f"Resposta enviada: {resposta}")
+                print(f"Resposta: {resposta}")
                 
                 numero = data.get('data', {}).get('key', {}).get('remoteJid', '')
                 if numero:
+                    # Verifique o número antes de enviar a mensagem
+                    if not numero.endswith("@s.whatsapp.net"):
+                        numero += "@s.whatsapp.net"
                     send_status, send_resp = send_whatsapp_message(numero, resposta)
                     print(f"Status do envio: {send_status}, resposta: {send_resp}")
                 
@@ -218,10 +223,6 @@ def webhook_route():
             else:
                 print("Mensagem não encontrada.")
                 return jsonify({"erro": "Mensagem não encontrada."}), 400
-        
-        elif data.get('event') == 'chats.update':
-            print("Evento de chat atualizado recebido. Sem ação necessária.")
-            return jsonify({"status": "sucesso", "mensagem": "Evento de chat atualizado recebido. Sem ação necessária."}), 200
         
         else:
             print("Evento não reconhecido.")
