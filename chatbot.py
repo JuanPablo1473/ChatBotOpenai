@@ -19,7 +19,9 @@ OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 AUTH_KEY = os.getenv("AUTHENTICATION_API_KEY")
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
 
-openai.api_key = OPENAI_API_KEY  # Usando openai diretamente
+openai.api_key = OPENAI_API_KEY
+client_openai = openai
+
 app = Flask(__name__)
 
 def obter_localizacao_via_ip():
@@ -75,7 +77,6 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
-# Função auxiliar para enviar mensagem via Evolution API
 def send_whatsapp_message(numero, mensagem):
     payload = {
         "number": numero,
@@ -111,15 +112,14 @@ def chat():
             f"❓ Pergunta: {mensagem}"
         )
 
-        # Usando client_openai.chat.completions.create conforme solicitado
-        resposta = openai.ChatCompletion.create(
+        resposta = client_openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
         )
 
-        conteudo = resposta.choices[0].message['content'].strip() if resposta.choices else "Não consegui gerar uma resposta."
+        conteudo = resposta.choices[0].message.content.strip() if resposta.choices else "Não consegui gerar uma resposta."
         return jsonify({"resposta": conteudo})
 
     except Exception as e:
@@ -188,7 +188,6 @@ def webhook_route():
         data = request.json
         print(f"Dados recebidos: {data}")
         
-        # Verificar o evento
         if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
 
@@ -210,10 +209,8 @@ def webhook_route():
 
                 print(f"Resposta enviada: {resposta}")
                 
-                # Extrair número de destinatário do payload (deve estar em data['data']['key']['remoteJid'])
                 numero = data.get('data', {}).get('key', {}).get('remoteJid', '')
                 if numero:
-                    # Envia a mensagem para o WhatsApp
                     send_status, send_resp = send_whatsapp_message(numero, resposta)
                     print(f"Status do envio: {send_status}, resposta: {send_resp}")
                 
