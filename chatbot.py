@@ -192,10 +192,14 @@ def webhook_route():
         data = request.json
         print(f"Dados recebidos: {data}")
         
-        if data.get('event') == 'messages.upsert':
+        event = data.get('event')
+        
+        if event == 'messages.upsert':
+            # Lógica para processar mensagens
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
             print(f"Mensagem recebida: {mensagem_recebida}")
 
+            # Respostas dependendo da mensagem
             if mensagem_recebida:
                 if 'clima' in mensagem_recebida.lower():
                     local = obter_localizacao_via_ip()
@@ -221,9 +225,10 @@ def webhook_route():
                     print(f"Status do envio: {send_status}, resposta: {send_resp}")
                 
                 return jsonify({"status": "sucesso", "resposta": resposta}), 200
-            else:
-                print("Mensagem não encontrada.")
-                return jsonify({"erro": "Mensagem não encontrada."}), 400
+
+        elif event == 'chats.update':
+            print("Evento chats.update recebido, mas não tratado.")
+            return jsonify({"status": "Evento 'chats.update' recebido."}), 200
         
         else:
             print("Evento não reconhecido.")
