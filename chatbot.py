@@ -17,7 +17,8 @@ except:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 AUTH_KEY = os.getenv("AUTHENTICATION_API_KEY")
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
+EVOLUTION_API_URL = "https://chatbotopenai-6-hl6z.onrender.com"
+
 
 openai.api_key = OPENAI_API_KEY  # Usando openai diretamente
 app = Flask(__name__)
