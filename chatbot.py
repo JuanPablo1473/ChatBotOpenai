@@ -88,7 +88,10 @@ def send_whatsapp_message(numero, mensagem):
     url = f"{EVOLUTION_API_URL}/message/sendText"  # Corrigido o endpoint da URL
     try:
         resposta = requests.post(url, json=payload, headers=headers)
-        return resposta.status_code, resposta.json()
+        if resposta.status_code == 200:
+            return resposta.status_code, resposta.json()
+        else:
+            return resposta.status_code, {"erro": resposta.text}
     except Exception as e:
         return None, {"erro": str(e)}
 
@@ -111,13 +114,13 @@ def chat():
             f"❓ Pergunta: {mensagem}"
         )
 
-        # Usando client_openai.chat.completions.create conforme solicitado
         resposta = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
-        )
+    )
+
 
         conteudo = resposta.choices[0].message['content'].strip() if resposta.choices else "Não consegui gerar uma resposta."
         return jsonify({"resposta": conteudo})
@@ -187,8 +190,7 @@ def webhook_route():
     try:
         data = request.json
         print(f"Dados recebidos: {data}")
-        
-        # Verificar o evento
+
         if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
 
@@ -209,11 +211,9 @@ def webhook_route():
                     resposta = "Desculpe, não entendi sua mensagem. Pode ser sobre clima ou previsão?"
 
                 print(f"Resposta enviada: {resposta}")
-                
-                # Extrair número de destinatário do payload (deve estar em data['data']['key']['remoteJid'])
+
                 numero = data.get('data', {}).get('key', {}).get('remoteJid', '')
                 if numero:
-                    # Envia a mensagem para o WhatsApp
                     send_status, send_resp = send_whatsapp_message(numero, resposta)
                     print(f"Status do envio: {send_status}, resposta: {send_resp}")
                 
@@ -221,15 +221,15 @@ def webhook_route():
             else:
                 print("Mensagem não encontrada.")
                 return jsonify({"erro": "Mensagem não encontrada."}), 400
-        
+
         elif data.get('event') == 'chats.update':
             print("Evento de chat atualizado recebido. Sem ação necessária.")
             return jsonify({"status": "sucesso", "mensagem": "Evento de chat atualizado recebido. Sem ação necessária."}), 200
-        
+
         else:
             print("Evento não reconhecido.")
             return jsonify({"erro": "Evento não reconhecido."}), 400
-        
+
     except Exception as e:
         print(f"Erro: {str(e)}")
         return jsonify({"erro": str(e)}), 500
