@@ -17,12 +17,9 @@ except:
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 AUTH_KEY = os.getenv("AUTHENTICATION_API_KEY")
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8081/manager/CampoIA")
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
 
-
-openai.api_key = OPENAI_API_KEY
-client_openai = openai
-
+openai.api_key = OPENAI_API_KEY  # Usando openai diretamente
 app = Flask(__name__)
 
 def obter_localizacao_via_ip():
@@ -78,6 +75,7 @@ def obter_previsao_estendida(cidade, pais):
     except Exception as e:
         return {"erro": str(e)}
 
+# Função auxiliar para enviar mensagem via Evolution API
 def send_whatsapp_message(numero, mensagem):
     payload = {
         "number": numero,
@@ -87,15 +85,12 @@ def send_whatsapp_message(numero, mensagem):
         "Content-Type": "application/json",
         "apikey": AUTH_KEY
     }
-    url = f"{EVOLUTION_API_URL}/message/send-text"
+    url = f"{EVOLUTION_API_URL}/message/sendText"  # Corrigido o endpoint da URL
     try:
         resposta = requests.post(url, json=payload, headers=headers)
-        print(f"Status do envio: {resposta.status_code}, Resposta: {resposta.text}")  # Log adicional
         return resposta.status_code, resposta.json()
     except Exception as e:
-        print(f"Erro ao enviar mensagem: {e}")
         return None, {"erro": str(e)}
-
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -116,14 +111,15 @@ def chat():
             f"❓ Pergunta: {mensagem}"
         )
 
-        resposta = client_openai.chat.completions.create(
+        # Usando client_openai.chat.completions.create conforme solicitado
+        resposta = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4
         )
 
-        conteudo = resposta.choices[0].message.content.strip() if resposta.choices else "Não consegui gerar uma resposta."
+        conteudo = resposta.choices[0].message['content'].strip() if resposta.choices else "Não consegui gerar uma resposta."
         return jsonify({"resposta": conteudo})
 
     except Exception as e:
@@ -192,15 +188,13 @@ def webhook_route():
         data = request.json
         print(f"Dados recebidos: {data}")
         
-        event = data.get('event')
-        
-        if event == 'messages.upsert':
-            # Lógica para processar mensagens
+        # Verificar o evento
+        if data.get('event') == 'messages.upsert':
             mensagem_recebida = data.get('data', {}).get('message', {}).get('conversation', '')
-            print(f"Mensagem recebida: {mensagem_recebida}")
 
-            # Respostas dependendo da mensagem
             if mensagem_recebida:
+                print(f"Mensagem recebida: {mensagem_recebida}")
+
                 if 'clima' in mensagem_recebida.lower():
                     local = obter_localizacao_via_ip()
                     clima = obter_previsao_tempo(local.get("cidade"), local.get("pais"))
@@ -214,21 +208,23 @@ def webhook_route():
                 else:
                     resposta = "Desculpe, não entendi sua mensagem. Pode ser sobre clima ou previsão?"
 
-                print(f"Resposta: {resposta}")
+                print(f"Resposta enviada: {resposta}")
                 
+                # Extrair número de destinatário do payload (deve estar em data['data']['key']['remoteJid'])
                 numero = data.get('data', {}).get('key', {}).get('remoteJid', '')
                 if numero:
-                    # Verifique o número antes de enviar a mensagem
-                    if not numero.endswith("@s.whatsapp.net"):
-                        numero += "@s.whatsapp.net"
+                    # Envia a mensagem para o WhatsApp
                     send_status, send_resp = send_whatsapp_message(numero, resposta)
                     print(f"Status do envio: {send_status}, resposta: {send_resp}")
                 
                 return jsonify({"status": "sucesso", "resposta": resposta}), 200
-
-        elif event == 'chats.update':
-            print("Evento chats.update recebido, mas não tratado.")
-            return jsonify({"status": "Evento 'chats.update' recebido."}), 200
+            else:
+                print("Mensagem não encontrada.")
+                return jsonify({"erro": "Mensagem não encontrada."}), 400
+        
+        elif data.get('event') == 'chats.update':
+            print("Evento de chat atualizado recebido. Sem ação necessária.")
+            return jsonify({"status": "sucesso", "mensagem": "Evento de chat atualizado recebido. Sem ação necessária."}), 200
         
         else:
             print("Evento não reconhecido.")
