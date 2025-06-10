@@ -1,0 +1,39 @@
+# Versão do Docker Compose
+version: '3.8'
+
+# Definição dos serviços (contêineres)
+services:
+
+  # Serviço para a API da Evolution
+  evolution-api:
+    container_name: evolution_api
+    image: atendai/evolution-api:v1.8.2
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  # Serviço para a sua aplicação Iagro (Python/Flask)
+  iagro-app:
+    container_name: iagro_app
+    build:
+      context: .
+      # Garante que ele use o arquivo chamado "Dockerfile" na pasta
+      dockerfile: Dockerfile
+    restart: always
+    # O comando que será executado para iniciar seu bot
+    # Ele informa ao servidor Gunicorn para usar o objeto 'app' de dentro do arquivo 'chatbot.py'
+    command: gunicorn --bind 0.0.0.0:5000 chatbot:app
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      - evolution-api
+
+# Definição dos volumes para persistência de dados
+volumes:
+  evolution_instances:
